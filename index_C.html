@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Donation System</title>
+    <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+</head>
+<body>
+    <h1>P2P Donation System</h1>
+    <h2>Available Recipients</h2>
+    <div id="recipients"></div>
+
+    <h2>Make a Donation</h2>
+    <p>Selected Recipient: <span id="selectedRecipient">None</span></p>
+    <input type="number" id="amount" placeholder="Amount in ETH" />
+    <button onclick="donate()">Donate</button>
+    <p id="status"></p>
+
+    <script>
+        const contractAddress = "0x6B2450F23fEAada5E133336dC0968F2652AF9B98"; // 替換成部署的智能合約地址
+        const abi = [ [
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "name",
+				"type": "string"
+			},
+			{
+				"internalType": "address",
+				"name": "wallet",
+				"type": "address"
+			}
+		],
+		"name": "addRecipient",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "recipientId",
+				"type": "uint256"
+			}
+		],
+		"name": "donate",
+		"outputs": [],
+		"stateMutability": "payable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "donor",
+				"type": "address"
+			},
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "recipientId",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "DonationSent",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"name": "donations",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "donor",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "recipientId",
+				"type": "uint256"
+			}
+		],
+		"name": "getDonationTotal",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "getRecipientCount",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "owner",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"name": "recipients",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "name",
+				"type": "string"
+			},
+			{
+				"internalType": "address",
+				"name": "wallet",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	}
+] ]; 
+
+        let web3, contract, accounts;
+
+        async function init() {
+            // 檢查使用者是否安裝了 MetaMask
+            if (typeof window.ethereum === 'undefined') {
+                alert("Please install MetaMask.");
+                return;
+            }
+
+            // 初始化 Web3
+            web3 = new Web3(window.ethereum);
+            accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            contract = new web3.eth.Contract(abi, contractAddress);
+
+            // 載入受助者清單
+            loadRecipients();
+        }
+
+        async function loadRecipients() {
+            const recipientCount = await contract.methods.getRecipientCount().call();
+            const recipientsDiv = document.getElementById("recipients");
+
+            for (let i = 0; i < recipientCount; i++) {
+                const recipient = await contract.methods.recipients(i).call();
+                const div = document.createElement("div");
+                div.innerHTML = `
+                    <p><strong>${recipient.name}</strong> - ${recipient.wallet}</p>
+                    <button onclick="selectRecipient(${i}, '${recipient.name}')">Select</button>
+                `;
+                recipientsDiv.appendChild(div);
+            }
+        }
+
+        let selectedRecipientId = null;
+
+        function selectRecipient(id, name) {
+            selectedRecipientId = id;
+            document.getElementById("selectedRecipient").innerText = name;
+        }
+
+        async function donate() {
+            if (selectedRecipientId === null) {
+                alert("Please select a recipient.");
+                return;
+            }
+
+            const amount = document.getElementById("amount").value;
+            if (amount <= 0) {
+                alert("Please enter a valid amount.");
+                return;
+            }
+
+            const value = web3.utils.toWei(amount, "ether");
+            await contract.methods.donate(selectedRecipientId).send({ from: accounts[0], value })
+                .on("transactionHash", function(hash) {
+                    document.getElementById("status").innerText = `Transaction sent: ${hash}`;
+                })
+                .on("confirmation", function() {
+                    document.getElementById("status").innerText = `Donation successful!`;
+                })
+                .on("error", function(error) {
+                    document.getElementById("status").innerText = `Error: ${error.message}`;
+                });
+        }
+
+        init();
+    </script>
+</body>
+</html>
